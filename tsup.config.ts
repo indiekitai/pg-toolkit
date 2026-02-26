@@ -8,7 +8,7 @@ export default defineConfig([
     clean: true,
   },
   {
-    entry: ['src/cli.ts', 'src/mcp.ts'],
+    entry: ['src/cli.ts', 'src/mcp.ts', 'src/analyze.ts'],
     format: ['esm'],
     banner: { js: '#!/usr/bin/env node' },
   },

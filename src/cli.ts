@@ -19,6 +19,7 @@ Commands:
   inspect   Inspect database schema (tables, views, functions, etc.)
   diff      Compare two database schemas and generate migration SQL
   top       Real-time activity monitor (like top for Postgres)
+  analyze   Detect N+1 query patterns and suggest CTE + JSON_AGG optimizations
   health    Run health checks (requires pg-health)
   types     Generate TypeScript types from schema (requires pg2ts)
   mcp       Start unified MCP server
@@ -227,6 +228,33 @@ Requires pg2ts to be installed and available in PATH.`);
   }
 }
 
+async function cmdAnalyze(args: string[]) {
+  if (args.includes('--help') || args.includes('-h')) {
+    console.log(`pg-toolkit analyze — Detect N+1 query patterns and suggest optimizations
+
+Usage: pg-toolkit analyze [options] <connection-string>
+
+Options:
+  --json       JSON output (default: human-readable)
+
+Scans table structures and foreign keys to detect:
+  - EAV (Entity-Attribute-Value) pattern tables
+  - Many-to-one relationships prone to N+1
+  - Tables with multiple child tables
+
+Suggests CTE + JSON_AGG rewrites for each finding.`);
+    return;
+  }
+
+  const connStr = getConnStr(args);
+  if (!connStr) die('Connection string required. Usage: pg-toolkit analyze <connection-string>');
+
+  const { analyze, formatAnalyzeResult } = await import('./analyze.js');
+  const result = await analyze(connStr);
+  const jsonMode = args.includes('--json');
+  console.log(formatAnalyzeResult(result, jsonMode));
+}
+
 // ─── Router ───────────────────────────────────────────────
 
 async function main() {
@@ -248,6 +276,7 @@ async function main() {
     case 'inspect': return cmdInspect(rest);
     case 'diff': return cmdDiff(rest);
     case 'top': return cmdTop(rest);
+    case 'analyze': return cmdAnalyze(rest);
     case 'health': return cmdHealth(rest);
     case 'types': return cmdTypes(rest);
     case 'mcp': {
