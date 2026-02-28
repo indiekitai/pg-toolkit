@@ -7,7 +7,7 @@ import { diff } from '@indiekitai/pg-diff';
 import { PgMonitor } from '@indiekitai/pg-top';
 import { execFileSync } from 'node:child_process';
 
-const VERSION = '0.1.0';
+const VERSION = '0.2.0';
 
 const HELP = `
 pg-toolkit v${VERSION} — Unified PostgreSQL toolkit
@@ -16,6 +16,7 @@ Usage:
   pg-toolkit <command> [options] [connection-string...]
 
 Commands:
+  doctor    Run comprehensive health diagnosis with scoring and fix script
   inspect   Inspect database schema (tables, views, functions, etc.)
   diff      Compare two database schemas and generate migration SQL
   top       Real-time activity monitor (like top for Postgres)
@@ -255,6 +256,59 @@ Suggests CTE + JSON_AGG rewrites for each finding.`);
   console.log(formatAnalyzeResult(result, jsonMode));
 }
 
+async function cmdDoctor(args: string[]) {
+  if (args.includes('--help') || args.includes('-h')) {
+    console.log(`pg-toolkit doctor — Comprehensive PostgreSQL health diagnosis
+
+Usage: pg-toolkit doctor [options] <connection-string>
+
+Options:
+  --url <url>        Connection string (or positional arg, or DATABASE_URL)
+  --json             Output as JSON
+  --format markdown  Output as markdown (for PR comments)
+  --ci               CI mode: exit non-zero if score below threshold
+  --threshold <n>    Score threshold for CI mode (default: 70)
+  --output <file>    Write fix SQL to file`);
+    return;
+  }
+
+  let connStr = '';
+  let json = false;
+  let format: 'text' | 'json' | 'markdown' = 'text';
+  let ci = false;
+  let threshold = 70;
+  let outputFile = '';
+
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === '--url' && args[i + 1]) connStr = args[++i];
+    else if (args[i] === '--json') { json = true; format = 'json'; }
+    else if (args[i] === '--format' && args[i + 1]) { format = args[++i] as any; }
+    else if (args[i] === '--ci') ci = true;
+    else if (args[i] === '--threshold' && args[i + 1]) threshold = Number(args[++i]);
+    else if (args[i] === '--output' && args[i + 1]) outputFile = args[++i];
+    else if (!args[i].startsWith('-') && !connStr) connStr = args[i];
+  }
+
+  connStr = connStr || process.env.DATABASE_URL || '';
+  if (!connStr) die('Connection string required. Use --url or positional arg or DATABASE_URL.');
+
+  const { doctor, formatDoctorResult, generateFixSql } = await import('./doctor.js');
+  const result = await doctor({ connectionString: connStr, threshold });
+
+  console.log(formatDoctorResult(result, format));
+
+  if (outputFile) {
+    const fs = await import('node:fs');
+    fs.writeFileSync(outputFile, generateFixSql(result));
+    console.log(`Fix script written to ${outputFile}`);
+  }
+
+  if (ci && result.overallScore < threshold) {
+    console.error(`\n❌ Score ${result.overallScore} is below threshold ${threshold}`);
+    process.exit(1);
+  }
+}
+
 // ─── Router ───────────────────────────────────────────────
 
 async function main() {
@@ -273,6 +327,7 @@ async function main() {
   }
 
   switch (command) {
+    case 'doctor': return cmdDoctor(rest);
     case 'inspect': return cmdInspect(rest);
     case 'diff': return cmdDiff(rest);
     case 'top': return cmdTop(rest);

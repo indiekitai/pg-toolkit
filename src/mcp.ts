@@ -30,7 +30,7 @@ function serialize(val: any): any {
 export async function startMcpServer(): Promise<void> {
   const server = new McpServer({
     name: 'pg-toolkit',
-    version: '0.1.0',
+    version: '0.2.0',
   });
 
   // ─── Inspect tools ──────────────────────────────────────
@@ -67,6 +67,23 @@ export async function startMcpServer(): Promise<void> {
     async ({ fromUrl, toUrl, safe }) => {
       const result = await diff(fromUrl, toUrl, { safe });
       return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+    },
+  );
+
+  // ─── Doctor tools ───────────────────────────────────────
+
+  server.tool(
+    'pg_doctor',
+    'Run comprehensive PostgreSQL health diagnosis — scores database 0-100, checks connections, cache, indexes, bloat, locks, vacuum, slow queries. Returns fix SQL.',
+    {
+      connectionString: z.string().describe('PostgreSQL connection string'),
+      format: z.enum(['json', 'text', 'markdown']).optional().describe('Output format (default: json)'),
+    },
+    async ({ connectionString, format }) => {
+      const { doctor, formatDoctorResult } = await import('./doctor.js');
+      const result = await doctor({ connectionString });
+      const fmt = format || 'json';
+      return { content: [{ type: 'text', text: formatDoctorResult(result, fmt) }] };
     },
   );
 

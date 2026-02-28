@@ -1,6 +1,6 @@
 {
   "name": "@indiekitai/pg-toolkit",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Unified CLI for all IndieKit PostgreSQL tools — inspect, diff, top, health, types",
   "type": "module",
   "exports": {

@@ -12,6 +12,40 @@ npx @indiekitai/pg-toolkit <command>
 
 ## Commands
 
+### `doctor` — Comprehensive health diagnosis
+
+One command to run all PG diagnostics, output a complete report + executable fix script.
+
+```bash
+# Full diagnosis with human-readable output
+pg-toolkit doctor postgresql://localhost/mydb
+
+# CI mode — exit non-zero if score below threshold
+pg-toolkit doctor --url postgresql://localhost/mydb --ci --threshold 70
+
+# Output fix SQL to file
+pg-toolkit doctor postgresql://localhost/mydb --output fix.sql
+
+# JSON output (for programmatic consumption)
+pg-toolkit doctor postgresql://localhost/mydb --json
+
+# Markdown output (for PR comments)
+pg-toolkit doctor postgresql://localhost/mydb --format markdown
+```
+
+**Checks performed:**
+- Connection health (usage, idle-in-transaction)
+- Cache hit ratio (table & index)
+- Unused indexes (with `DROP INDEX` fixes)
+- Table bloat (dead tuple ratio, `VACUUM FULL` fixes)
+- Long-running transactions (>5 min)
+- Lock contention (blocked queries)
+- Vacuum status (never-vacuumed tables)
+- Slow queries (via `pg_stat_statements`)
+- Missing indexes (heavy sequential scans)
+
+**Scoring:** Each check gets a 0-100 score with a weight. The overall score is a weighted average. Use `--ci --threshold 70` to fail CI pipelines when the database is unhealthy.
+
 ### `inspect` — Schema inspection
 
 ```bash
@@ -97,6 +131,7 @@ MCP config for AI agents:
 ```
 
 Available MCP tools:
+- `pg_doctor` — Run comprehensive health diagnosis with scoring
 - `inspect_schema` — Inspect database schema
 - `diff_schemas` — Compare two databases
 - `pg_activity` — Get activity snapshot
@@ -104,7 +139,11 @@ Available MCP tools:
 ## Programmatic API
 
 ```typescript
-import { inspect, diff, PgMonitor } from '@indiekitai/pg-toolkit';
+import { inspect, diff, PgMonitor, doctor } from '@indiekitai/pg-toolkit';
+
+// Doctor — comprehensive diagnosis
+const report = await doctor({ connectionString: 'postgresql://localhost/mydb' });
+console.log(`Score: ${report.overallScore}/100, Fixes: ${report.fixes.length}`);
 
 // Inspect
 const schema = await inspect('postgresql://localhost/mydb');
