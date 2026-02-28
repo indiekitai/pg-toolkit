@@ -1,122 +1,104 @@
-# @indiekitai/pg-toolkit
+# pg-toolkit
 
-Unified CLI for all IndieKit PostgreSQL tools. One command, all PG tools.
+**The PostgreSQL Swiss Army knife for TypeScript developers.**
 
-## Install
+One CLI to diagnose, inspect, diff, monitor, and generate types for your Postgres databases.
+
+🔍 **20+ health checks** with scoring and auto-generated fix SQL
+🔄 **Schema diff** that outputs ready-to-run migration SQL
+🤖 **AI-agent ready** via MCP — plug into Claude, Cursor, or any MCP client
+
+## Quick Start
 
 ```bash
-npm install -g @indiekitai/pg-toolkit
-# or
-npx @indiekitai/pg-toolkit <command>
+npx @indiekitai/pg-toolkit doctor postgres://localhost/mydb
+```
+
+```
+🏥 Database Health Report — mydb
+Overall Score: 82/100
+
+✅ Cache Hit Ratio .............. 99.2%  (excellent)
+⚠️  Unused Indexes .............. 3 found
+✅ Connection Usage ............. 12/100
+❌ Table Bloat .................. 2 tables need VACUUM
+✅ Long Transactions ............ none
+✅ Lock Contention .............. clear
+⚠️  Vacuum Status ............... 1 table never vacuumed
+✅ Slow Queries ................. p95 < 100ms
+
+📋 Fix Script Generated → fix.sql (4 statements)
 ```
 
 ## Commands
 
-### `doctor` — Comprehensive health diagnosis
+### `doctor` — Diagnose, score, fix
 
-One command to run all PG diagnostics, output a complete report + executable fix script.
-
-```bash
-# Full diagnosis with human-readable output
-pg-toolkit doctor postgresql://localhost/mydb
-
-# CI mode — exit non-zero if score below threshold
-pg-toolkit doctor --url postgresql://localhost/mydb --ci --threshold 70
-
-# Output fix SQL to file
-pg-toolkit doctor postgresql://localhost/mydb --output fix.sql
-
-# JSON output (for programmatic consumption)
-pg-toolkit doctor postgresql://localhost/mydb --json
-
-# Markdown output (for PR comments)
-pg-toolkit doctor postgresql://localhost/mydb --format markdown
-```
-
-**Checks performed:**
-- Connection health (usage, idle-in-transaction)
-- Cache hit ratio (table & index)
-- Unused indexes (with `DROP INDEX` fixes)
-- Table bloat (dead tuple ratio, `VACUUM FULL` fixes)
-- Long-running transactions (>5 min)
-- Lock contention (blocked queries)
-- Vacuum status (never-vacuumed tables)
-- Slow queries (via `pg_stat_statements`)
-- Missing indexes (heavy sequential scans)
-
-**Scoring:** Each check gets a 0-100 score with a weight. The overall score is a weighted average. Use `--ci --threshold 70` to fail CI pipelines when the database is unhealthy.
-
-### `inspect` — Schema inspection
+Runs 20+ checks against your database, produces a 0–100 health score, and generates executable SQL to fix what it finds.
 
 ```bash
-# Full schema dump
-pg-toolkit inspect postgresql://localhost/mydb
-
-# Filter to specific objects
-pg-toolkit inspect --tables postgresql://localhost/mydb
-pg-toolkit inspect --views --functions postgresql://localhost/mydb
-pg-toolkit inspect --enums --types postgresql://localhost/mydb
-
-# Summary counts
-pg-toolkit inspect --summary postgresql://localhost/mydb
+pg-toolkit doctor postgres://localhost/mydb
+pg-toolkit doctor postgres://localhost/mydb --ci --threshold 70   # fail CI if unhealthy
+pg-toolkit doctor postgres://localhost/mydb --output fix.sql      # save fixes
+pg-toolkit doctor postgres://localhost/mydb --json                # machine-readable
 ```
 
-Filters: `--tables`, `--views`, `--functions`, `--indexes`, `--sequences`, `--enums`, `--extensions`, `--triggers`, `--constraints`, `--schemas`, `--privileges`, `--types`, `--domains`, `--collations`, `--rls`
+### `inspect` — See everything in your schema
 
-### `diff` — Schema diff & migration SQL
+Tables, views, functions, indexes, enums, triggers, constraints, RLS policies — all in one command.
 
 ```bash
-# Generate migration SQL
-pg-toolkit diff postgresql://localhost/old postgresql://localhost/new
-
-# Safe mode (no DROP statements)
-pg-toolkit diff --safe postgresql://localhost/old postgresql://localhost/new
-
-# JSON output
-pg-toolkit diff --json postgresql://localhost/old postgresql://localhost/new
-
-# Pipe directly to psql
-pg-toolkit diff postgres://localhost/old postgres://localhost/new | psql postgres://localhost/old
+pg-toolkit inspect postgres://localhost/mydb
+pg-toolkit inspect --tables --indexes postgres://localhost/mydb
+pg-toolkit inspect --summary postgres://localhost/mydb            # just counts
 ```
 
-### `top` — Activity monitor
+### `diff` — Compare schemas, get migration SQL
+
+Point it at two databases. Get `ALTER`, `CREATE`, and `DROP` statements to migrate one to the other.
 
 ```bash
-# Interactive TUI
-pg-toolkit top postgresql://localhost/mydb
-
-# Custom refresh rate, hide idle
-pg-toolkit top --refresh 1 --no-idle postgresql://localhost/mydb
-
-# Single snapshot as JSON
-pg-toolkit top --snapshot --json postgresql://localhost/mydb
+pg-toolkit diff postgres://localhost/dev postgres://localhost/prod
+pg-toolkit diff --safe postgres://localhost/dev postgres://localhost/prod   # no DROPs
+pg-toolkit diff postgres://dev postgres://prod | psql postgres://prod      # apply directly
 ```
 
-### `health` — Health checks
+### `top` — Live activity monitor
+
+Like `htop` for your database. See active queries, locks, and connection stats in real time.
 
 ```bash
-pg-toolkit health postgresql://localhost/mydb
+pg-toolkit top postgres://localhost/mydb
+pg-toolkit top --refresh 1 --no-idle postgres://localhost/mydb
+pg-toolkit top --snapshot --json postgres://localhost/mydb        # single snapshot
 ```
 
-Delegates to `pg-health` (must be installed separately via `pip install pg-health`).
+### `types` — PostgreSQL → TypeScript
 
-### `types` — TypeScript type generation
+Generate TypeScript interfaces from your database schema.
 
 ```bash
-pg-toolkit types postgresql://localhost/mydb
+pg-toolkit types postgres://localhost/mydb
 ```
 
-Delegates to `pg2ts` (must be installed separately).
+## Programmatic API
 
-### `mcp` — Unified MCP server
+```typescript
+import { doctor, inspect, diff } from '@indiekitai/pg-toolkit';
 
-Start a single MCP server that combines all PG tools:
+const report = await doctor({ connectionString: 'postgres://localhost/mydb' });
+console.log(report.overallScore); // 82
+console.log(report.fixes);        // SQL fix statements
 
-```bash
-pg-toolkit mcp
+const schema = await inspect('postgres://localhost/mydb');
+
+const migration = await diff(devUrl, prodUrl, { safe: true });
+console.log(migration.sql); // ALTER TABLE ..., CREATE INDEX ...
 ```
 
-MCP config for AI agents:
+## AI Agent / MCP
+
+All tools are available as an MCP server. Add this to your agent config:
 
 ```json
 {
@@ -130,37 +112,23 @@ MCP config for AI agents:
 }
 ```
 
-Available MCP tools:
-- `pg_doctor` — Run comprehensive health diagnosis with scoring
-- `inspect_schema` — Inspect database schema
-- `diff_schemas` — Compare two databases
-- `pg_activity` — Get activity snapshot
+Exposes `pg_doctor`, `inspect_schema`, `diff_schemas`, and `pg_activity` as MCP tools. Works with Claude, Cursor, Windsurf, and any MCP-compatible agent.
 
-## Programmatic API
+## How it compares
 
-```typescript
-import { inspect, diff, PgMonitor, doctor } from '@indiekitai/pg-toolkit';
+| Feature | pg-toolkit | pgcli | migra | prisma |
+|---|---|---|---|---|
+| Health checks + scoring | ✅ 20+ checks | ❌ | ❌ | ❌ |
+| Auto-generate fix SQL | ✅ | ❌ | ❌ | ❌ |
+| Schema inspection | ✅ | ✅ partial | ❌ | ✅ introspect |
+| Schema diff → SQL | ✅ | ❌ | ✅ | ✅ migrate diff |
+| Live activity monitor | ✅ | ❌ | ❌ | ❌ |
+| TypeScript generation | ✅ | ❌ | ❌ | ✅ built-in |
+| MCP / AI-agent support | ✅ | ❌ | ❌ | ❌ |
+| CI mode (exit codes) | ✅ | ❌ | ✅ | ✅ |
+| Single `npx` command | ✅ | pip install | pip install | npm + config |
 
-// Doctor — comprehensive diagnosis
-const report = await doctor({ connectionString: 'postgresql://localhost/mydb' });
-console.log(`Score: ${report.overallScore}/100, Fixes: ${report.fixes.length}`);
-
-// Inspect
-const schema = await inspect('postgresql://localhost/mydb');
-
-// Diff
-const result = await diff(fromUrl, toUrl, { safe: true });
-
-// Monitor
-const monitor = new PgMonitor({ connectionString: '...', snapshot: true, json: true });
-```
-
-## Packages
-
-This toolkit wraps:
-- [@indiekitai/pg-inspect](https://github.com/indiekitai/pg-inspect) — Schema inspection
-- [@indiekitai/pg-diff](https://github.com/indiekitai/pg-diff) — Schema diff
-- [@indiekitai/pg-top](https://github.com/indiekitai/pg-top) — Activity monitor
+pg-toolkit combines what used to require 3–4 separate tools into one `npx` call.
 
 ## License
 

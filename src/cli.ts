@@ -184,7 +184,12 @@ Options:
     json,
   });
 
-  await monitor.start();
+  if (snapshot) {
+    const output = await monitor.runSnapshot();
+    console.log(output);
+  } else {
+    await monitor.runInteractive();
+  }
 }
 
 function cmdHealth(args: string[]) {
